@@ -30,14 +30,17 @@ python main.py
 
 ### Modo com argumentos
 ```bash
-python main.py <OAB> <DATA_INICIO> <DATA_FIM> [headless]
+python main.py <OAB> <DATA_INICIO> <DATA_FIM> [headless] [UF_OAB]
 ```
 
 **Exemplo:**
 ```bash
 python main.py 165230 2026-01-20 2026-01-20
 python main.py 165230 2026-01-20 2026-01-20 true
+python main.py 12402 2026-03-07 2026-03-10 false PI
 ```
+
+O parâmetro `UF_OAB` filtra por estado da OAB (ex: SP, RJ, PI). Se omitido, busca em todas as UFs.
 
 ## Saída
 

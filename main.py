@@ -49,9 +49,12 @@ def criar_driver(headless: bool = False):
     return driver
 
 
-def montar_url(oab: str, data_inicio: str, data_fim: str) -> str:
+def montar_url(oab: str, data_inicio: str, data_fim: str, uf_oab: str = "") -> str:
     """Monta a URL de consulta com os parâmetros."""
-    return f"{BASE_URL}?texto={oab}&dataDisponibilizacaoInicio={data_inicio}&dataDisponibilizacaoFim={data_fim}"
+    url = f"{BASE_URL}?texto={oab}&dataDisponibilizacaoInicio={data_inicio}&dataDisponibilizacaoFim={data_fim}"
+    if uf_oab:
+        url += f"&ufOab={uf_oab.upper()}"
+    return url
 
 
 def aguardar_carregamento(driver, wait):
@@ -718,23 +721,27 @@ def obter_processos_existentes():
     return existentes
 
 
-def salvar_resultados(intimacoes, oab, data_inicio, data_fim, body_text=""):
+def salvar_resultados(intimacoes, oab, data_inicio, data_fim, body_text="", uf_oab=""):
     """Salva os resultados em JSON e CSV."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    nome_base = f"intimacoes_OAB{oab}_{data_inicio}_{data_fim}_{timestamp}"
+    uf_parte = f"_UF{uf_oab.upper()}" if uf_oab else ""
+    nome_base = f"intimacoes_OAB{oab}{uf_parte}_{data_inicio}_{data_fim}_{timestamp}"
 
     # Salvar JSON
     json_path = os.path.join(OUTPUT_DIR, f"{nome_base}.json")
+    consulta_info = {
+        "oab": oab,
+        "data_inicio": data_inicio,
+        "data_fim": data_fim,
+        "data_extracao": datetime.now().isoformat(),
+        "total_intimacoes": len(intimacoes)
+    }
+    if uf_oab:
+        consulta_info["uf_oab"] = uf_oab.upper()
     dados_export = {
-        "consulta": {
-            "oab": oab,
-            "data_inicio": data_inicio,
-            "data_fim": data_fim,
-            "data_extracao": datetime.now().isoformat(),
-            "total_intimacoes": len(intimacoes)
-        },
+        "consulta": consulta_info,
         "intimacoes": intimacoes
     }
     with open(json_path, "w", encoding="utf-8") as f:
@@ -1142,7 +1149,7 @@ def clicar_aba_tribunal(driver, aba):
         return False
 
 
-def consultar_intimacoes(oab: str, data_inicio: str, data_fim: str, headless: bool = False):
+def consultar_intimacoes(oab: str, data_inicio: str, data_fim: str, headless: bool = False, uf_oab: str = ""):
     """
     Função principal: consulta intimações no DJEN por OAB e período.
     Detecta e navega por TODAS as abas de tribunais (TJSP, TRF2, etc.).
@@ -1152,12 +1159,15 @@ def consultar_intimacoes(oab: str, data_inicio: str, data_fim: str, headless: bo
         data_inicio: Data início formato YYYY-MM-DD (ex: "2026-01-20")
         data_fim: Data fim formato YYYY-MM-DD (ex: "2026-01-20")
         headless: Se True, roda sem abrir janela do navegador
+        uf_oab: UF da OAB (ex: "SP", "RJ", "PI"). Vazio = todas.
     """
-    url = montar_url(oab, data_inicio, data_fim)
+    url = montar_url(oab, data_inicio, data_fim, uf_oab)
     print(f"\n{'='*60}")
     print(f"  JurisRapido - Consulta de Intimações")
     print(f"{'='*60}")
     print(f"  OAB: {oab}")
+    if uf_oab:
+        print(f"  UF da OAB: {uf_oab.upper()}")
     print(f"  Período: {data_inicio} a {data_fim}")
     print(f"  URL: {url}")
     print(f"  Headless: {headless}")
@@ -1270,7 +1280,7 @@ def consultar_intimacoes(oab: str, data_inicio: str, data_fim: str, headless: bo
         todas_intimacoes = novas
 
         print(f"\n[5/5] Salvando {len(todas_intimacoes)} nova(s) intimação(ões)...")
-        json_path = salvar_resultados(todas_intimacoes, oab, data_inicio, data_fim, body_text_final)
+        json_path = salvar_resultados(todas_intimacoes, oab, data_inicio, data_fim, body_text_final, uf_oab=uf_oab)
 
         salvar_screenshot(driver, f"resultado_final_OAB{oab}")
 
@@ -1303,14 +1313,26 @@ if __name__ == "__main__":
     data_inicio = "2026-01-20"
     data_fim = "2026-01-20"
     headless = False
+    uf_oab = ""
 
-    # Suporte a argumentos de linha de comando
+    # Suporte a argumentos de linha de comando:
+    # python main.py <OAB> <DATA_INICIO> <DATA_FIM> [headless] [UF_OAB]
     if len(sys.argv) >= 4:
         oab = sys.argv[1]
         data_inicio = sys.argv[2]
         data_fim = sys.argv[3]
     if len(sys.argv) >= 5:
-        headless = sys.argv[4].lower() in ("true", "1", "sim", "yes")
+        arg4 = sys.argv[4]
+        if arg4.lower() in ("true", "1", "sim", "yes", "false", "0", "nao", "no"):
+            headless = arg4.lower() in ("true", "1", "sim", "yes")
+        elif len(arg4) == 2 and arg4.isalpha():
+            uf_oab = arg4.upper()
+    if len(sys.argv) >= 6:
+        arg5 = sys.argv[5]
+        if len(arg5) == 2 and arg5.isalpha():
+            uf_oab = arg5.upper()
+        elif arg5.lower() in ("true", "1", "sim", "yes"):
+            headless = True
 
     # Se nenhum argumento, perguntar interativamente
     if len(sys.argv) < 2:
@@ -1319,6 +1341,10 @@ if __name__ == "__main__":
         entrada_oab = input("  Número OAB (enter para 165230): ").strip()
         if entrada_oab:
             oab = entrada_oab
+
+        entrada_uf = input("  UF da OAB (ex: SP, RJ, PI - enter para todas): ").strip()
+        if entrada_uf:
+            uf_oab = entrada_uf.upper()
 
         entrada_inicio = input("  Data início YYYY-MM-DD (enter para 2026-01-20): ").strip()
         if entrada_inicio:
@@ -1331,5 +1357,5 @@ if __name__ == "__main__":
         entrada_headless = input("  Rodar headless? (s/N): ").strip().lower()
         headless = entrada_headless in ("s", "sim", "y", "yes")
 
-    resultados = consultar_intimacoes(oab, data_inicio, data_fim, headless)
+    resultados = consultar_intimacoes(oab, data_inicio, data_fim, headless, uf_oab=uf_oab)
     print(f"\n  Total retornado: {len(resultados)} intimação(ões)")

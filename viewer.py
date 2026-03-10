@@ -86,14 +86,17 @@ def listar_todas_intimacoes():
     return todas
 
 
-def executar_automacao(oab, data_inicio, data_fim):
+def executar_automacao(oab, data_inicio, data_fim, uf_oab=""):
     """Executa main.py em background e atualiza o status global."""
     global automacao_status
     automacao_status = {"rodando": True, "log": "Iniciando automação...\n", "erro": None, "arquivo_resultado": None, "zero_resultados": False}
 
     try:
+        cmd = [sys.executable, MAIN_PY, oab, data_inicio, data_fim]
+        if uf_oab:
+            cmd.extend(["false", uf_oab.upper()])
         proc = subprocess.Popen(
-            [sys.executable, MAIN_PY, oab, data_inicio, data_fim],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -196,6 +199,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
                     <div class="flex-1 min-w-[120px]">
                         <label class="block text-xs text-gray-500 mb-1">N. da OAB</label>
                         <input type="text" id="inputOAB" name="consulta_oab_jurisrapido" required placeholder="Digite a OAB" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none font-semibold">
+                    </div>
+                    <div class="min-w-[80px] max-w-[100px]">
+                        <label class="block text-xs text-gray-500 mb-1">UF da OAB</label>
+                        <input type="text" id="inputUfOab" maxlength="2" placeholder="Ex: SP" autocomplete="off" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-gray-900 focus:border-transparent outline-none uppercase" style="text-transform:uppercase">
                     </div>
                     <div class="flex-1 min-w-[140px]">
                         <label class="block text-xs text-gray-500 mb-1">Data Início</label>
@@ -477,6 +484,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     async function iniciarBusca(e) {
         e.preventDefault();
         const oab = document.getElementById('inputOAB').value.trim();
+        const ufOab = (document.getElementById('inputUfOab').value||'').trim().toUpperCase();
         const dataInicio = document.getElementById('inputDataInicio').value;
         const dataFim = document.getElementById('inputDataFim').value;
         if (!oab||!dataInicio||!dataFim) { mostrarToast('Preencha todos os campos'); return; }
@@ -488,7 +496,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         const logEl = document.getElementById('logAutomacao');
         if (logEl) logEl.textContent = 'Iniciando...\n';
         try {
-            const resp = await fetch('/api/buscar', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oab,data_inicio:dataInicio,data_fim:dataFim})});
+            const resp = await fetch('/api/buscar', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oab,uf_oab:ufOab,data_inicio:dataInicio,data_fim:dataFim})});
             const data = await resp.json();
             if (data.erro) { mostrarErro(data.erro); resetarBotao(); return; }
             pollingInterval = setInterval(pollStatus, 1500);
@@ -652,6 +660,7 @@ class JurisRapidoHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             oab = dados.get("oab", "").strip()
+            uf_oab = dados.get("uf_oab", "").strip().upper()
             data_inicio = dados.get("data_inicio", "").strip()
             data_fim = dados.get("data_fim", "").strip()
 
@@ -664,7 +673,7 @@ class JurisRapidoHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             # Lançar automação em thread separada
-            t = threading.Thread(target=executar_automacao, args=(oab, data_inicio, data_fim), daemon=True)
+            t = threading.Thread(target=executar_automacao, args=(oab, data_inicio, data_fim, uf_oab), daemon=True)
             t.start()
 
             self.responder_json({"ok": True, "mensagem": "Busca iniciada"})
