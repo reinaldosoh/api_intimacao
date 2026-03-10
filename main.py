@@ -30,21 +30,29 @@ TIMEOUT = 30  # segundos para esperar elementos
 def criar_driver(headless: bool = False):
     """Cria e configura o driver do Chrome."""
     chrome_options = Options()
-    if headless:
+
+    is_docker = os.environ.get("DOCKER", "").lower() in ("1", "true") or os.path.exists("/.dockerenv")
+
+    if headless or is_docker:
         chrome_options.add_argument("--headless=new")
+
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
+
+    if is_docker:
+        chrome_options.binary_location = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome-stable")
 
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
         "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     })
-    # Maximizar janela para layout completo (botões Copiar visíveis)
     driver.maximize_window()
     return driver
 
