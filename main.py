@@ -29,7 +29,14 @@ TIMEOUT = 30  # segundos para esperar elementos
 
 
 def criar_driver(headless: bool = False):
-    """Cria e configura o driver do Chrome."""
+    """
+    Cria e configura o driver do Chrome.
+    Suporta proxy via variável de ambiente PROXY_URL.
+    Formatos aceitos:
+      - http://usuario:senha@host:porta
+      - http://host:porta
+      - socks5://usuario:senha@host:porta
+    """
     chrome_options = Options()
 
     is_docker = os.environ.get("DOCKER", "").lower() in ("1", "true") or os.path.exists("/.dockerenv")
@@ -45,16 +52,21 @@ def criar_driver(headless: bool = False):
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-software-rasterizer")
 
-    # User-Agent de navegador real para evitar bloqueio por IP/bot de data center
+    # User-Agent de navegador real
     chrome_options.add_argument(
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/124.0.0.0 Safari/537.36"
     )
-
-    # Cabeçalhos extra para parecer um browser real
     chrome_options.add_argument("--lang=pt-BR,pt;q=0.9,en;q=0.8")
-    chrome_options.add_argument("--accept-lang=pt-BR")
+
+    # Proxy residencial (configura via env var PROXY_URL)
+    proxy_url = os.environ.get("PROXY_URL", "").strip()
+    if proxy_url:
+        print(f"  [PROXY] Usando proxy: {proxy_url.split('@')[-1]}")
+        chrome_options.add_argument(f"--proxy-server={proxy_url}")
+        # Ignorar erros de certificado do proxy
+        chrome_options.add_argument("--ignore-certificate-errors")
 
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
