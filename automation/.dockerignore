@@ -1,0 +1,10 @@
+.git
+.windsurf
+*.code-workspace
+__pycache__
+*.pyc
+resultados/
+cascade_input.txt
+diagnostico*.py
+teste_*.py
+.cursor

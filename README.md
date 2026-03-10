@@ -98,12 +98,13 @@ docker compose up -d --build
 ### EasyPanel
 
 1. Crie um serviço **App** com fonte GitHub: `reinaldosoh/api_intimacao`, branch `main`
-2. Método de build: **Dockerfile**
-3. Porta: **8080**
-4. **Importante**: Chrome precisa de mais memória compartilhada. Em **Deploy** > **Resources** (ou configurações avançadas), adicione:
+2. **Caminho de Build**: `/automation` (obrigatório - o Dockerfile está nesta pasta)
+3. Método de build: **Dockerfile**
+4. Porta: **8080**
+5. **Importante**: Chrome precisa de mais memória compartilhada. Em **Deploy** > **Resources** (ou configurações avançadas), adicione:
    - **shm_size** ou **Shared memory**: `2g` (ou 2048 MB)
 
-   Se não houver opção para shm_size, use **Docker Compose** como fonte em vez de Dockerfile, e use o `docker-compose.yml` do repositório (já inclui `shm_size: "2gb"`).
+   Se não houver opção para shm_size, use **Docker Compose** como fonte (o `docker-compose.yml` na raiz já inclui `shm_size: "2gb"`).
 
 ## Saída
 
