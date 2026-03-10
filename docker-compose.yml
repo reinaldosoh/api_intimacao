@@ -2,9 +2,7 @@ version: "3.8"
 
 services:
   jurisrapido:
-    build:
-      context: ./automation
-      dockerfile: Dockerfile
+    build: .
     container_name: jurisrapido-api
     restart: unless-stopped
     ports:
