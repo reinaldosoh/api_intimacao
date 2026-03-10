@@ -27,7 +27,4 @@ RUN mkdir -p /app/resultados
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8080/api/health || exit 1
-
 CMD ["python", "api.py"]
