@@ -44,6 +44,18 @@ def criar_driver(headless: bool = False):
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-software-rasterizer")
+
+    # User-Agent de navegador real para evitar bloqueio por IP/bot de data center
+    chrome_options.add_argument(
+        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+
+    # Cabeçalhos extra para parecer um browser real
+    chrome_options.add_argument("--lang=pt-BR,pt;q=0.9,en;q=0.8")
+    chrome_options.add_argument("--accept-lang=pt-BR")
+
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option("useAutomationExtension", False)
 
@@ -57,8 +69,15 @@ def criar_driver(headless: bool = False):
             driver = webdriver.Chrome(options=chrome_options)
     else:
         driver = webdriver.Chrome(options=chrome_options)
+
+    # Remover marcadores de automação via CDP
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'languages', {get: () => ['pt-BR', 'pt', 'en']});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            window.chrome = { runtime: {} };
+        """
     })
     driver.maximize_window()
     return driver
@@ -1203,10 +1222,31 @@ def consultar_intimacoes(oab: str, data_inicio: str, data_fim: str, headless: bo
 
         salvar_screenshot(driver, f"pagina_carregada_OAB{oab}")
 
-        # Verificar se há resultados
+        # Verificar se há resultados (com retry se o DJEN retornou erro HTTP)
         body_text = driver.find_element(By.TAG_NAME, "body").text.strip()
         print(f"\n  Texto da página ({len(body_text)} caracteres):")
         print(f"  {body_text[:500]}...")
+
+        # Se DJEN retornou erro, aguardar mais e tentar recarregar até 3x
+        tentativas_reload = 0
+        while tentativas_reload < 3 and (
+            "Ops! Algo aconteceu" in body_text or
+            "HttpErrorResponse" in body_text or
+            "Não foi possível buscar" in body_text
+        ):
+            tentativas_reload += 1
+            print(f"\n  ⚠ DJEN retornou erro HTTP (tentativa {tentativas_reload}/3). Aguardando 10s e recarregando...")
+            time.sleep(10)
+            driver.refresh()
+            aguardar_carregamento(driver, wait)
+            body_text = driver.find_element(By.TAG_NAME, "body").text.strip()
+            print(f"  Texto após reload ({len(body_text)} caracteres): {body_text[:200]}...")
+
+        if "Ops! Algo aconteceu" in body_text or "HttpErrorResponse" in body_text:
+            print("\n  ✗ DJEN continua bloqueando as requisições após 3 tentativas.")
+            print("  Isso geralmente ocorre quando o IP do servidor é identificado como data center.")
+            print("  Verifique a URL manualmente:", url)
+            return []
 
         if "Nenhum resultado" in body_text or "Nenhuma comunicação" in body_text:
             print("\n  ⚠ Nenhuma intimação encontrada para os parâmetros informados.")
