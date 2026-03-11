@@ -255,11 +255,25 @@ painel_status = {"rodando": False, "log": "", "erro": None, "arquivo_resultado":
 painel_lock = threading.Lock()
 
 
+def _limpar_resultados_antigos():
+    """Remove todos os JSONs/CSVs de resultados anteriores para evitar leak entre buscas."""
+    if not os.path.exists(OUTPUT_DIR):
+        return
+    for f in os.listdir(OUTPUT_DIR):
+        if f.startswith("intimacoes_") and (f.endswith(".json") or f.endswith(".csv")):
+            try:
+                os.remove(os.path.join(OUTPUT_DIR, f))
+            except OSError:
+                pass
+
+
 def _executar_painel(oab, data_inicio, data_fim, uf_oab=""):
     """Executa automação e atualiza painel_status para polling do frontend."""
     global painel_status
     with painel_lock:
         painel_status = {"rodando": True, "log": "Iniciando automação...\n", "erro": None, "arquivo_resultado": None, "zero_resultados": False}
+
+    _limpar_resultados_antigos()
 
     try:
         import io, contextlib
