@@ -150,7 +150,14 @@ def aguardar_carregamento(driver, wait):
         except:
             continue
 
-    # Espera extra para Angular renderizar completamente
+    # Aguardar conteúdo real carregar (não apenas "Carregando...")
+    for _ in range(20):
+        body = driver.find_element(By.TAG_NAME, "body").text.strip()
+        if len(body) > 50 and "Carregando" not in body:
+            break
+        time.sleep(1)
+
+    # Espera extra para Angular renderizar abas de tribunais
     time.sleep(3)
 
 
