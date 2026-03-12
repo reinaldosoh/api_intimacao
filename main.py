@@ -1046,22 +1046,71 @@ def detectar_ultima_pagina(driver):
     return obter_total_paginas(driver)
 
 
+def extrair_pagina_com_abas(driver, inicio_num=1):
+    """
+    Extrai intimações de UMA página, iterando por todas as abas de tribunal.
+    No DJEN, cada página pode ter suas próprias abas (TJPI, TRT22, TJMA, etc.).
+    Retorna lista de intimações e body_text.
+    """
+    intimacoes_pagina = []
+    body_text = ""
+
+    abas = detectar_abas_tribunais(driver)
+
+    if not abas or len(abas) <= 1:
+        nome_tribunal = abas[0]["nome"] if abas else None
+        resultado = extrair_intimacoes(driver, inicio_num=inicio_num)
+        if isinstance(resultado, tuple):
+            ints, body_text = resultado
+        else:
+            ints = resultado
+            body_text = driver.find_element(By.TAG_NAME, "body").text.strip()
+        if nome_tribunal:
+            for intim in ints:
+                intim["tribunal"] = nome_tribunal
+        intimacoes_pagina.extend(ints)
+    else:
+        nomes = ', '.join(f"{a['nome']}({a['quantidade']})" for a in abas)
+        print(f"    Abas: {nomes}")
+
+        for i, aba in enumerate(abas):
+            nome_tribunal = aba["nome"]
+
+            if i > 0:
+                if not clicar_aba_tribunal(driver, aba):
+                    print(f"    ⚠ Pulando aba {nome_tribunal}")
+                    continue
+
+            resultado = extrair_intimacoes(driver, inicio_num=inicio_num + len(intimacoes_pagina))
+            if isinstance(resultado, tuple):
+                ints, body_text = resultado
+            else:
+                ints = resultado
+                body_text = driver.find_element(By.TAG_NAME, "body").text.strip()
+
+            for intim in ints:
+                intim["tribunal"] = nome_tribunal
+
+            print(f"    {nome_tribunal}: {len(ints)} intimação(ões)")
+            intimacoes_pagina.extend(ints)
+
+    return intimacoes_pagina, body_text
+
+
 def extrair_todas_paginas(driver, inicio_num=1):
     """
     Extrai intimações de TODAS as páginas, navegando pela paginação.
-    Usa estratégia de clicar "próxima página" até não haver mais próxima.
+    Em cada página, detecta e itera pelas abas de tribunal.
     Retorna lista completa de intimações e body_text da última página.
-    inicio_num: número inicial para a numeração contínua das intimações.
     """
     todas_intimacoes = []
     body_text = ""
 
-    # Detectar total de páginas
     total_paginas = detectar_ultima_pagina(driver)
     print(f"\n  Paginação detectada: {total_paginas} página(s)")
 
     pagina_atual = 1
-    max_paginas = 100  # Segurança para evitar loop infinito
+    max_paginas = 100
 
     while pagina_atual <= max_paginas:
         print(f"\n{'─'*40}")
@@ -1071,31 +1120,24 @@ def extrair_todas_paginas(driver, inicio_num=1):
         if pagina_atual > 1:
             salvar_screenshot(driver, f"pagina_{pagina_atual}")
 
-        # Extrair intimações desta página
-        resultado = extrair_intimacoes(driver, inicio_num=inicio_num + len(todas_intimacoes))
-        if isinstance(resultado, tuple):
-            intimacoes_pagina, body_text = resultado
-        else:
-            intimacoes_pagina = resultado
-            body_text = driver.find_element(By.TAG_NAME, "body").text.strip()
+        intimacoes_pagina, body_text = extrair_pagina_com_abas(
+            driver, inicio_num=inicio_num + len(todas_intimacoes)
+        )
 
         print(f"  → {len(intimacoes_pagina)} intimação(ões) nesta página")
         todas_intimacoes.extend(intimacoes_pagina)
 
-        # Se não há mais páginas ou é a última, parar
         if total_paginas <= 1 or pagina_atual >= total_paginas:
-            # Tentar clicar próxima mesmo assim (total_paginas pode estar errado)
             if total_paginas > 1:
                 break
-            # Para total_paginas == 1, verificar se existe botão próxima
             if not clicar_proxima_pagina(driver):
                 break
-            # Se chegou aqui, havia mais páginas do que detectado
             pagina_atual += 1
             total_paginas = max(total_paginas, pagina_atual + 1)
+            # Aguardar carregamento após mudar de página
+            time.sleep(2)
             continue
 
-        # Tentar ir para a próxima página
         proxima = pagina_atual + 1
         print(f"  Navegando para página {proxima}...")
 
@@ -1104,6 +1146,8 @@ def extrair_todas_paginas(driver, inicio_num=1):
                 print(f"  ⚠ Não conseguiu navegar para página {proxima}. Parando.")
                 break
 
+        # Aguardar carregamento da nova página
+        time.sleep(2)
         pagina_atual += 1
 
     print(f"\n  Total geral: {len(todas_intimacoes)} intimação(ões) em {pagina_atual} página(s)")
@@ -1271,49 +1315,13 @@ def consultar_intimacoes(oab: str, data_inicio: str, data_fim: str, headless: bo
             print("\n  ⚠ Nenhuma intimação encontrada para os parâmetros informados.")
             return []
 
-        # Detectar abas de tribunais
-        print("\n[4/5] Detectando tribunais disponíveis...")
-        abas_tribunais = detectar_abas_tribunais(driver)
+        # Extrair todas as páginas (cada página detecta suas próprias abas de tribunal)
+        print("\n[4/5] Extraindo intimações de todas as páginas e tribunais...")
 
         todas_intimacoes = []
         body_text_final = body_text
 
-        if not abas_tribunais or len(abas_tribunais) <= 1:
-            # Apenas 1 tribunal (ou sem abas) - extrair normalmente
-            print("  Apenas 1 tribunal detectado. Extraindo...")
-            intimacoes, body_text_final = extrair_todas_paginas(driver)
-            todas_intimacoes.extend(intimacoes)
-        else:
-            # Múltiplos tribunais - iterar por cada aba
-            print(f"  {len(abas_tribunais)} tribunal(is) detectado(s): {', '.join(a['nome'] + ' (' + str(a['quantidade']) + ')' for a in abas_tribunais)}")
-
-            for i, aba in enumerate(abas_tribunais):
-                nome_tribunal = aba["nome"]
-                qtd = aba["quantidade"]
-
-                print(f"\n{'═'*50}")
-                print(f"  TRIBUNAL {i+1}/{len(abas_tribunais)}: {nome_tribunal} ({qtd} intimação(ões))")
-                print(f"{'═'*50}")
-
-                # Clicar na aba do tribunal
-                if i > 0:  # Primeira aba já está ativa
-                    if not clicar_aba_tribunal(driver, aba):
-                        print(f"  ⚠ Pulando tribunal {nome_tribunal} - não foi possível acessar")
-                        continue
-
-                salvar_screenshot(driver, f"tribunal_{nome_tribunal}_OAB{oab}")
-
-                # Extrair intimações deste tribunal (todas as páginas)
-                inicio = len(todas_intimacoes) + 1
-                intimacoes_tribunal, bt = extrair_todas_paginas(driver, inicio_num=inicio)
-
-                # Adicionar nome do tribunal a cada intimação
-                for intim in intimacoes_tribunal:
-                    intim["tribunal"] = nome_tribunal
-
-                print(f"  → {len(intimacoes_tribunal)} intimação(ões) extraída(s) do {nome_tribunal}")
-                todas_intimacoes.extend(intimacoes_tribunal)
-                body_text_final = bt
+        todas_intimacoes, body_text_final = extrair_todas_paginas(driver)
 
         if todas_intimacoes:
             print(f"\n  Total de intimações encontradas: {len(todas_intimacoes)}")
