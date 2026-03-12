@@ -97,7 +97,7 @@ def criar_driver(headless: bool = False):
 
 def montar_url(oab: str, data_inicio: str, data_fim: str, uf_oab: str = "") -> str:
     """Monta a URL de consulta com os parâmetros."""
-    url = f"{BASE_URL}?texto={oab}&dataDisponibilizacaoInicio={data_inicio}&dataDisponibilizacaoFim={data_fim}"
+    url = f"{BASE_URL}?numeroOab={oab}&dataDisponibilizacaoInicio={data_inicio}&dataDisponibilizacaoFim={data_fim}"
     if uf_oab:
         url += f"&ufOab={uf_oab.upper()}"
     return url
